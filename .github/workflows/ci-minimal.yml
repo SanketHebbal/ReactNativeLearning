@@ -115,3 +115,100 @@ jobs:
         with:
           name: android-build
           path: android/app/build/outputs/**/*.apk
+
+  ios-build:
+    runs-on: macos-latest
+    env:
+      # Update these to match your repo
+      WORKSPACE: ios/NewsReader.xcworkspace # or .xcodeproj if you don't use CocoaPods
+      SCHEME: NewsReader
+      CONFIGURATION: Release
+      ARCHIVE_PATH: ${{ github.workspace }}/build/NewsReader.xcarchive
+      APP_ZIP_PATH: ${{ github.workspace }}/build/NewsReader.app.zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install JS dependencies
+        # adjust to npm or yarn per your repo
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Install CocoaPods (if using pods)
+        run: |
+          # only run if ios/Podfile exists
+          if [ -f ios/Podfile ]; then
+            sudo gem install cocoapods -v 1.11.3 || true
+            cd ios
+            pod install --repo-update
+            cd ..
+          else
+            echo "No Podfile found, skipping CocoaPods install"
+          fi
+
+      - name: Print Xcode / Node versions (debug)
+        run: |
+          xcodebuild -version
+          node -v
+          npm -v
+
+      - name: Clean previous build folder
+        run: |
+          rm -rf build || true
+          mkdir -p build
+
+      - name: Build unsigned .xcarchive (CODE_SIGNING disabled)
+        run: |
+          echo "Archiving without code signing..."
+          # If you use an .xcodeproj replace WORKSPACE with yourproj.xcodeproj and omit -workspace/-scheme flags accordingly.
+          xcodebuild clean -workspace "${WORKSPACE}" -scheme "${SCHEME}" -configuration "${CONFIGURATION}" || true
+          xcodebuild archive \
+            -workspace "${WORKSPACE}" \
+            -scheme "${SCHEME}" \
+            -configuration "${CONFIGURATION}" \
+            -archivePath "${ARCHIVE_PATH}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            ENABLE_CODE_SIGNING=NO
+
+      - name: Verify archive contents
+        run: |
+          echo "Archive path: ${ARCHIVE_PATH}"
+          ls -la "${ARCHIVE_PATH}" || true
+          echo "Contents of Products/Applications:"
+          ls -la "${ARCHIVE_PATH}/Products/Applications" || true
+
+      - name: Package .app into zip (unsigned)
+        run: |
+          APP_DIR="${ARCHIVE_PATH}/Products/Applications"
+          # find .app folder (support spaces in name)
+          APP_PATH=$(find "$APP_DIR" -maxdepth 1 -name '*.app' -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found in archive at $APP_DIR"
+            ls -la "$APP_DIR" || true
+            exit 1
+          fi
+          echo "Found .app: $APP_PATH"
+          mkdir -p "$(dirname "${APP_ZIP_PATH}")"
+          # create a zip so it is easy to download from artifacts
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "${APP_ZIP_PATH}"
+          echo "Created ${APP_ZIP_PATH}"
+          ls -la "$(dirname "${APP_ZIP_PATH}")"
+
+      - name: Upload unsigned build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-build
+          path: |
+            build/*.xcarchive
+            build/*.app.zip
