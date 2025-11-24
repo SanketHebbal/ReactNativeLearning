@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { View, Text, Button } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -11,7 +10,7 @@ const Screen1 = () => {
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
       <Text>Screen 1</Text>
       <Button
-        title="Go to Screen 2"
+        title="Go to Screen 2 - updated the button title"
         onPress={() =>
           navigation.navigate('Screen2', {
             param1: 'Hello from Screen 1',
