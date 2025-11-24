@@ -26,7 +26,7 @@ jobs:
           path: |
             ~/.cache/npm
             node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
 
@@ -67,3 +67,51 @@ jobs:
           path: |
             **/junit.xml
             junit.xml
+
+  android-build:
+    runs-on: 'ubuntu-latest'
+    env:
+      JAVA_TOOL_OPTIONS: '-Xmx3g'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/npm
+            node_modules
+          key: ${{ runner.os }}-npm-{{ hashFiles(**/package-lock.json)}}
+
+      - name: Install dependencies
+        run: npm install --frozen-lockfile
+
+      - name: Cache gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Cache android build outputs
+        uses: actions/cache@v4
+        with:
+          path: 'android/.gradle'
+          key: android-gradle-{{ hashFiles('android/**/build.gradle.*') }}
+
+      - name: Generate android release
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: android/apk/build/output/**/*.apk
